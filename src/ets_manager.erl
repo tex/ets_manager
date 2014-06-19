@@ -27,6 +27,8 @@
 
 -record(state, {opts}).
 
+-type state() :: #state{}.
+
 %% ------------------------------------------------------------------
 %% API Function Definitions
 %% ------------------------------------------------------------------
@@ -90,24 +92,29 @@ code_change(_OldVsn, State, _Extra) ->
 %%        Reason = atom()
 %% @doc Create or return an ets table for use. It will make the ets_manager
 %% a heir on the table so that on failure it is returned to it.
+-spec
+give_me(atom(), pid(), state()) ->
+    {ok, ets:tab()} | {error, already_own_table}.
 give_me(Name, Pid, State) ->
     give_me(Name, [], Pid, State).
 
+-spec
+give_me(atom(), list(), pid(), state()) ->
+    {ok, ets:tab()} | {error, already_own_table}.
 give_me(Name, Opts, Pid, State) ->
     Me = self(),
     case ets:info(Name) of
-        undefined -> Tid = ets:new(Name, State#state.opts ++ Opts),
-                     case ets:give_away(Tid, Pid, new_table) of
-                         true -> {ok, Tid};
-                         false -> {error, cant_give_away}
-                     end;
-        _Found -> case ets:info(Name, owner) of
-                      Pid -> {error, already_own_table};
-                      Me  -> case ets:give_away(Name, Pid, reissued) of
-                                 true -> {ok, Name}; %% Name =:= Tid
-                                 false -> {error, cant_give_away}
-                             end
-                  end
+        undefined ->
+            Tid = ets:new(Name, State#state.opts ++ Opts),
+            true = ets:give_away(Tid, Pid, new_table),
+            {ok, Tid};
+        Found when is_list(Found) ->
+            case ets:info(Name, owner) of
+                Pid -> {error, already_own_table};
+                Me  ->
+                    true = ets:give_away(Name, Pid, reissued),
+                    {ok, Name} %% Name =:= Tid
+                end
     end.
 
 %% ===================================================================
